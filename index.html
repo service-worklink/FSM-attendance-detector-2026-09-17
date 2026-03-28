@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>簽到紀錄異常偵測系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #f4f7f6; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .status { padding: 10px; margin-bottom: 20px; border-radius: 4px; }
+        .loading { background: #fff3cd; color: #856404; }
+        .ready { background: #d4edda; color: #155724; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #f8f9fa; }
+        .anomaly { background-color: #f8d7da; color: #721c24; font-weight: bold; }
+        .normal { color: #28a745; }
+        .threshold-info { font-size: 0.9em; color: #666; margin-top: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🚀 簽到紀錄 AI 異常偵測</h2>
+    
+    <div id="modelStatus" class="status loading">正在載入 AI 模型...</div>
+
+    <div style="margin-bottom: 20px;">
+        <label>1. 選擇簽到 CSV 檔案：</label>
+        <input type="file" id="csvFile" accept=".csv" disabled>
+    </div>
+
+    <div>
+        <label>2. 調整靈敏度 (判定閥值 MSE): </label>
+        <input type="number" id="threshold" value="0.1" step="0.01" style="width: 60px;">
+        <p class="threshold-info">超過此數值將標記為異常。建議範圍：0.05 ~ 0.2</p>
+    </div>
+
+    <table id="resultTable" style="display:none;">
+        <thead>
+            <tr>
+                <th>姓名</th>
+                <th>簽到時間</th>
+                <th>簽退時間</th>
+                <th>時數</th>
+                <th>AI 誤差值 (MSE)</th>
+                <th>判定結果</th>
+            </tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+    </table>
+</div>
+
+<script>
+    let model;
+    const modelStatus = document.getElementById('modelStatus');
+    const csvFileInput = document.getElementById('csvFile');
+    const thresholdInput = document.getElementById('threshold');
+
+    // 1. 載入模型
+    async function init() {
+        try {
+            // 注意：這裡假設 model.json 和 weights.bin 放在同目錄的 my-checkin-model 資料夾下
+            model = await tf.loadLayersModel('./my-checkin-model/model.json');
+            modelStatus.innerText = '✅ 模型載入成功，請上傳 CSV 檔案進行偵測';
+            modelStatus.className = 'status ready';
+            csvFileInput.disabled = false;
+        } catch (e) {
+            modelStatus.innerText = '❌ 模型載入失敗，請確認 my-checkin-model 資料夾是否存在';
+            modelStatus.className = 'status anomaly';
+            console.error(e);
+        }
+    }
+
+    // 2. 特徵工程 (必須與訓練時完全一致)
+    function preprocess(checkIn, checkOut, duration) {
+        const parseTime = (timeStr) => {
+            if (!timeStr) return 0;
+            const [h, m] = timeStr.split(':').map(Number);
+            return (h + m / 60) / 24;
+        };
+        return [parseTime(checkIn), parseTime(checkOut), parseFloat(duration) / 4];
+    }
+
+    // 3. 處理檔案上傳
+    csvFileInput.addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        Papa.parse(file, {
+            header: true,
+            skipEmptyLines: true,
+            complete: function(results) {
+                runDetection(results.data);
+            }
+        });
+    });
+
+    // 4. 執行偵測
+    function runDetection(data) {
+        const tbody = document.getElementById('resultBody');
+        const table = document.getElementById('resultTable');
+        const threshold = parseFloat(thresholdInput.value);
+        tbody.innerHTML = '';
+        table.style.display = 'table';
+
+        data.forEach(row => {
+            // 讀取 CSV 欄位，請根據您的 CSV 欄位名稱修改
+            const name = row['姓名'] || '未知';
+            const checkIn = row['簽到時間'];
+            const checkOut = row['簽退時間'];
+            const duration = row['簽到時數'] || 0;
+
+            if (!checkIn || !checkOut) return;
+
+            const features = preprocess(checkIn, checkOut, duration);
+            const inputTensor = tf.tensor2d([features]);
+            
+            // 使用模型預測並計算重建誤差 (MSE)
+            const outputTensor = model.predict(inputTensor);
+            const mse = tf.losses.meanSquaredError(inputTensor, outputTensor).dataSync()[0];
+
+            const isAnomaly = mse > threshold;
+            const tr = document.createElement('tr');
+            if (isAnomaly) tr.className = 'anomaly';
+
+            tr.innerHTML = `
+                <td>${name}</td>
+                <td>${checkIn}</td>
+                <td>${checkOut}</td>
+                <td>${duration}</td>
+                <td>${mse.toFixed(6)}</td>
+                <td>${isAnomaly ? '🚨 異常紀錄' : '<span class="normal">✅ 正常</span>'}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    init();
+</script>
+
+</body>
+</html>
