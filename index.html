@@ -71,10 +71,10 @@
 
         /* 靈敏度閥值 (MSE) 樣式比照上傳圖片 */
         .sensitivity-control {
-            display: flex; align-items: center; gap: 15px; font-size: 1.1em;
+            display: flex; align-items: center; gap: 15px; font-size: 1.0em;
         }
         .sensitivity-control .icon {
-            font-size: 1.2em; color: #6c6c6c;
+            font-size: 1.0em; color: #6c6c6c;
         }
 
         /* 滑動桿 (Slider) 樣式比照上傳圖片 */
@@ -152,6 +152,10 @@
                 <i class="fas fa-sliders-h icon"></i>
                 <div style="font-weight: 600;">靈敏度閥值 (MSE)</div>
             </div>
+
+         <div style="color: #8c8c8c; font-size: 0.9em; text-align: left;">
+            調整滑桿設定 AI 判定標準，數值越小，偵測條件越嚴格。
+        </div>
             
             <div class="slider-wrapper">
                 <input type="range" id="threshold" min="0.001" max="0.5" step="0.001" value="0.1">
@@ -161,10 +165,6 @@
             <button id="detectBtn" class="btn-detect" disabled>
                 <i class="fas fa-play"></i> 執行偵測
             </button>
-        </div>
-
-        <div style="color: #8c8c8c; font-size: 0.85em; text-align: right;">
-            調整滑桿設定 AI 判定標準。<br>數值越小，偵測條件越嚴格。
         </div>
     </div>
 
