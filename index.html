@@ -2,49 +2,52 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>簽到紀錄 AI 異常偵測 (Excel 版)</title>
+    <title>簽到紀錄 AI 異常偵測 (全頁籤版)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #f4f7f6; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .container { max-width: 1100px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         .status { padding: 10px; margin-bottom: 20px; border-radius: 4px; }
         .loading { background: #fff3cd; color: #856404; }
         .ready { background: #d4edda; color: #155724; }
         table { width: 100%; border-collapse: collapse; margin-top: 20px; }
         th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-        th { background-color: #f8f9fa; }
+        th { background-color: #f8f9fa; position: sticky; top: 0; }
         .anomaly { background-color: #f8d7da; color: #721c24; font-weight: bold; }
         .normal { color: #28a745; }
+        .sheet-name { color: #666; font-size: 0.85em; font-style: italic; }
         .threshold-info { font-size: 0.9em; color: #666; margin-top: 5px; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2>🚀 簽到紀錄 AI 異常偵測 (Excel)</h2>
+    <h2>🚀 簽到紀錄 AI 異常偵測 (讀取全頁籤)</h2>
     
     <div id="modelStatus" class="status loading">正在載入 AI 模型...</div>
 
     <div style="margin-bottom: 20px;">
         <label>1. 選擇簽到 Excel (.xlsx) 檔案：</label>
         <input type="file" id="excelFile" accept=".xlsx, .xls" disabled>
+        <p class="threshold-info">* 程式將自動掃描檔案內所有分頁 (Tabs)</p>
     </div>
 
     <div>
         <label>2. 調整靈敏度 (判定閥值 MSE): </label>
         <input type="number" id="threshold" value="0.1" step="0.01" style="width: 60px;">
-        <p class="threshold-info">超過此數值將標記為異常。建議範圍：0.05 ~ 0.2</p>
+        <p class="threshold-info">建議範圍：0.05 ~ 0.2。數值越低越嚴格。</p>
     </div>
 
     <table id="resultTable" style="display:none;">
         <thead>
             <tr>
+                <th>來源頁籤</th>
                 <th>姓名</th>
                 <th>簽到時間</th>
                 <th>簽退時間</th>
                 <th>時數</th>
-                <th>AI 誤差值 (MSE)</th>
+                <th>AI 誤差 (MSE)</th>
                 <th>判定結果</th>
             </tr>
         </thead>
@@ -58,41 +61,32 @@
     const excelFileInput = document.getElementById('excelFile');
     const thresholdInput = document.getElementById('threshold');
 
-    // 1. 載入模型 (確保 model.json 與此 html 在同一目錄或正確路徑)
     async function init() {
         try {
-            // 如果你的模型在子資料夾，請修改路徑如 './my-model/model.json'
+            // 載入與此 HTML 同目錄下的模型
             model = await tf.loadLayersModel('model.json');
-            modelStatus.innerText = '✅ 模型載入成功，請上傳 Excel 檔案進行偵測';
+            modelStatus.innerText = '✅ 模型載入成功，準備就緒';
             modelStatus.className = 'status ready';
             excelFileInput.disabled = false;
         } catch (e) {
-            modelStatus.innerText = '❌ 模型載入失敗，請確認 model.json 與 weights.bin 是否在正確位置';
+            modelStatus.innerText = '❌ 載入失敗：請確保 model.json 與 weights.bin 位於正確路徑，且透過伺服器開啟此頁面';
             modelStatus.className = 'status anomaly';
             console.error(e);
         }
     }
 
-    // 2. 特徵工程 (必須與訓練時完全一致)
     function preprocess(checkIn, checkOut, duration) {
         const parseTime = (timeStr) => {
             if (!timeStr) return 0;
-            // 處理 Excel 讀取時可能出現的各種格式 (例如 09:00 或 Date 物件字串)
             const timeParts = String(timeStr).match(/(\d{1,2}):(\d{1,2})/);
             if (!timeParts) return 0;
-            const h = parseInt(timeParts[1]);
-            const m = parseInt(timeParts[2]);
-            return (h + m / 60) / 24;
+            return (parseInt(timeParts[1]) + parseInt(timeParts[2]) / 60) / 24;
         };
-        
-        // 確保 duration 是數字
         let dur = parseFloat(duration);
         if (isNaN(dur)) dur = 0;
-
         return [parseTime(checkIn), parseTime(checkOut), dur / 4];
     }
 
-    // 3. 處理 Excel 檔案上傳
     excelFileInput.addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
@@ -102,18 +96,27 @@
             const data = new Uint8Array(ev.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
             
-            // 預設讀取第一個工作表 (First Sheet)
-            const firstSheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[firstSheetName];
-            
-            // 轉換為 JSON 格式
-            const jsonData = XLSX.utils.sheet_to_json(worksheet);
-            runDetection(jsonData);
+            let allData = [];
+
+            // --- 修改處：迴圈遍歷所有頁籤 ---
+            workbook.SheetNames.forEach(sheetName => {
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                
+                // 為每筆資料標註來源頁籤名稱
+                const dataWithSheetSource = jsonData.map(row => ({
+                    ...row,
+                    _fromSheet: sheetName
+                }));
+                
+                allData = allData.concat(dataWithSheetSource);
+            });
+
+            runDetection(allData);
         };
         reader.readAsArrayBuffer(file);
     });
 
-    // 4. 執行偵測
     function runDetection(data) {
         const tbody = document.getElementById('resultBody');
         const table = document.getElementById('resultTable');
@@ -122,15 +125,16 @@
         table.style.display = 'table';
 
         if (data.length === 0) {
-            alert("Excel 檔案中找不到資料！");
+            alert("檔案中找不到任何資料！");
             return;
         }
 
         data.forEach(row => {
-            // 請根據您的 Excel 標題名稱對應，若名稱不同請修改下方字串
-            const name = row['姓名'] || '未知';
-            const checkIn = row['簽到時間'];
-            const checkOut = row['簽退時間'];
+            // 欄位對應 (請依實際 Excel 標題調整)
+            const sheetName = row['_fromSheet'];
+            const name = row['姓名'] || row['Name'] || '未知';
+            const checkIn = row['簽到時間'] || row['Check In'];
+            const checkOut = row['簽退時間'] || row['Check Out'];
             const duration = row['簽到時數'] || row['時數'] || 0;
 
             if (!checkIn || !checkOut) return;
@@ -138,7 +142,6 @@
             const features = preprocess(checkIn, checkOut, duration);
             const inputTensor = tf.tensor2d([features]);
             
-            // 使用模型預測並計算重建誤差 (MSE)
             const outputTensor = model.predict(inputTensor);
             const mse = tf.losses.meanSquaredError(inputTensor, outputTensor).dataSync()[0];
 
@@ -147,12 +150,13 @@
             if (isAnomaly) tr.className = 'anomaly';
 
             tr.innerHTML = `
+                <td class="sheet-name">${sheetName}</td>
                 <td>${name}</td>
                 <td>${checkIn}</td>
                 <td>${checkOut}</td>
                 <td>${duration}</td>
                 <td>${mse.toFixed(6)}</td>
-                <td>${isAnomaly ? '🚨 異常紀錄' : '<span class="normal">✅ 正常</span>'}</td>
+                <td>${isAnomaly ? '🚨 異常' : '<span class="normal">✅ 正常</span>'}</td>
             `;
             tbody.appendChild(tr);
         });
