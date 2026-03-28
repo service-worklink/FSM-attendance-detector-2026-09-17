@@ -37,7 +37,6 @@
         .ready { background: var(--success-bg); color: var(--success-text); border: 1px solid #b7eb8f; }
         .error { background: var(--error-bg); color: var(--error-text); border: 1px solid #ffa39e; }
 
-        /* 檔案上傳區 */
         .upload-section {
             border: 2px dashed #d9d9d9; border-radius: var(--border-radius);
             padding: 30px; text-align: center; background: #fafafa;
@@ -48,7 +47,6 @@
         .upload-section i { font-size: 32px; color: var(--primary-color); margin-bottom: 10px; }
         #excelFile { display: none; }
         
-        /* 控制列 */
         .controls {
             display: flex; align-items: center; justify-content: space-between;
             gap: 15px; padding: 20px; background: #f8f9fa; border-radius: 8px; margin-bottom: 30px;
@@ -61,7 +59,6 @@
         }
         .btn-detect:disabled { background-color: #d9d9d9; cursor: not-allowed; }
 
-        /* 錯誤訊息 */
         #errorLog {
             color: var(--error-text); background: var(--error-bg);
             padding: 15px; border-radius: 6px; margin-bottom: 20px;
@@ -79,7 +76,7 @@
 <body>
 
 <div class="container">
-    <h2><i class="fas fa-shield-alt"></i> 簽到紀錄 AI 異常偵測</h2>
+    <h2><i class="fas fa-id-badge"></i> 簽到紀錄 AI 異常偵測</h2>
     
     <div id="modelStatus" class="status loading">
         <i class="fas fa-spinner fa-spin"></i> 正在初始化 AI 模型...
@@ -88,21 +85,21 @@
     <div id="errorLog"></div>
 
     <div class="upload-section" id="dropZone" onclick="document.getElementById('excelFile').click()">
-        <i class="fas fa-file-import"></i>
+        <i class="fas fa-file-excel"></i>
         <div id="fileNameDisplay" style="font-size: 1.1em; font-weight: 500;">點擊上傳 Excel 檔案</div>
-        <div style="color: #8c8c8c; font-size: 0.85em; margin-top: 5px;">系統將檢查：姓名、簽到時間、簽退時間</div>
+        <div style="color: #8c8c8c; font-size: 0.85em; margin-top: 5px;">系統將檢查：員工編號、簽到時間、簽退時間</div>
         <input type="file" id="excelFile" accept=".xlsx, .xls" disabled>
     </div>
 
     <div class="controls">
         <div style="display: flex; align-items: center; gap: 10px;">
-            <i class="fas fa-cog"></i>
-            <label>靈敏度:</label>
+            <i class="fas fa-sliders-h"></i>
+            <label>靈敏度閥值:</label>
             <input type="number" id="threshold" value="0.1" step="0.01" style="width:70px; padding:8px; border-radius:4px; border:1px solid #ddd;">
         </div>
         
         <button id="detectBtn" class="btn-detect" disabled>
-            <i class="fas fa-search"></i> 執行偵測
+            <i class="fas fa-microchip"></i> 執行偵測
         </button>
     </div>
 
@@ -110,11 +107,11 @@
         <thead>
             <tr>
                 <th>頁籤</th>
-                <th>姓名</th>
-                <th>簽到/簽退</th>
+                <th>員工編號</th>
+                <th>簽到 / 簽退</th>
                 <th>時數</th>
-                <th>誤差值</th>
-                <th>結果</th>
+                <th>誤差值 (MSE)</th>
+                <th>判定結果</th>
             </tr>
         </thead>
         <tbody id="resultBody"></tbody>
@@ -124,7 +121,8 @@
 <script>
     let model;
     let pendingData = [];
-    const REQUIRED_COLUMNS = ['姓名', '簽到時間', '簽退時間']; // 定義必要欄位
+    // 修改處：將「姓名」改為「員工編號」作為必要欄位
+    const REQUIRED_COLUMNS = ['員工編號', '簽到時間', '簽退時間']; 
 
     const modelStatus = document.getElementById('modelStatus');
     const excelFileInput = document.getElementById('excelFile');
@@ -136,7 +134,7 @@
     async function init() {
         try {
             model = await tf.loadLayersModel('model.json');
-            modelStatus.innerHTML = '<i class="fas fa-check-circle"></i> 模型就緒';
+            modelStatus.innerHTML = '<i class="fas fa-check-circle"></i> AI 模型載入成功';
             modelStatus.className = 'status ready';
             excelFileInput.disabled = false;
         } catch (e) {
@@ -145,19 +143,17 @@
         }
     }
 
-    // 核心檢核邏輯
     function validateData(data) {
         if (!data || data.length === 0) return "檔案內容為空";
         
-        // 檢查第一筆資料是否包含所有必要欄位
         const firstRow = data[0];
         const keys = Object.keys(firstRow);
         const missing = REQUIRED_COLUMNS.filter(col => !keys.includes(col));
         
         if (missing.length > 0) {
-            return `格式錯誤：缺少必要欄位 [${missing.join(', ')}]。請檢查 Excel 標題列名稱是否正確。`;
+            return `格式檢核失敗：缺少必要欄位 [${missing.join(', ')}]。請確認 Excel 標題名稱。`;
         }
-        return null; // 代表沒問題
+        return null;
     }
 
     excelFileInput.addEventListener('change', function(e) {
@@ -173,33 +169,32 @@
             const workbook = XLSX.read(data, { type: 'array' });
             let combinedData = [];
 
-            // 讀取所有頁籤
             workbook.SheetNames.forEach(name => {
                 const sheet = XLSX.utils.sheet_to_json(workbook.Sheets[name]);
                 combinedData = combinedData.concat(sheet.map(row => ({ ...row, _sheet: name })));
             });
 
-            // 執行格式檢核
             const errorMsg = validateData(combinedData);
             if (errorMsg) {
                 errorLog.innerText = errorMsg;
                 errorLog.style.display = 'block';
                 dropZone.classList.add('invalid-file');
-                fileNameDisplay.innerText = "檔案格式不正確";
+                fileNameDisplay.innerText = "檔案格式不符";
                 detectBtn.disabled = true;
                 return;
             }
 
-            // 通過檢核
             pendingData = combinedData;
-            fileNameDisplay.innerText = `已讀取：${file.name} (共 ${pendingData.length} 筆)`;
+            fileNameDisplay.innerText = `已讀取：${file.name} (共 ${pendingData.length} 筆資料)`;
             dropZone.classList.add('has-file');
             detectBtn.disabled = false;
         };
         reader.readAsArrayBuffer(file);
     });
 
-    detectBtn.addEventListener('click', () => runDetection(pendingData));
+    detectBtn.addEventListener('click', () => {
+        runDetection(pendingData);
+    });
 
     function preprocess(checkIn, checkOut, duration) {
         const parseTime = (timeStr) => {
@@ -226,14 +221,21 @@
             const tr = document.createElement('tr');
             tr.innerHTML = `
                 <td style="color:#8c8c8c; font-size:0.85em;">${row._sheet}</td>
-                <td><b>${row['姓名']}</b></td>
+                <td style="font-weight:600; color:#444;">${row['員工編號']}</td>
                 <td>${row['簽到時間']} - ${row['簽退時間']}</td>
                 <td>${row['簽到時數'] || row['時數'] || '-'}</td>
-                <td style="font-family:monospace;">${mse.toFixed(5)}</td>
-                <td><span class="tag ${isAnomaly ? 'tag-anomaly' : 'tag-normal'}">${isAnomaly ? '🚨 異常' : '✅ 正常'}</span></td>
+                <td style="font-family:monospace; color:#666;">${mse.toFixed(5)}</td>
+                <td>
+                    <span class="tag ${isAnomaly ? 'tag-anomaly' : 'tag-normal'}">
+                        ${isAnomaly ? '<i class="fas fa-exclamation-triangle"></i> 異常紀錄' : '正常'}
+                    </span>
+                </td>
             `;
             tbody.appendChild(tr);
         });
+        
+        // 自動捲動到結果區
+        document.getElementById('resultTable').scrollIntoView({ behavior: 'smooth' });
     }
 
     init();
