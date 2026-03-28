@@ -62,7 +62,7 @@
     async function init() {
         try {
             // 注意：這裡假設 model.json 和 weights.bin 放在同目錄的 my-checkin-model 資料夾下
-            model = await tf.loadLayersModel('./my-checkin-model/model.json');
+            model = await tf.loadLayersModel('model.json');
             modelStatus.innerText = '✅ 模型載入成功，請上傳 CSV 檔案進行偵測';
             modelStatus.className = 'status ready';
             csvFileInput.disabled = false;
