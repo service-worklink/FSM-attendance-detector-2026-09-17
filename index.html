@@ -2,9 +2,9 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>簽到紀錄異常偵測系統</title>
+    <title>簽到紀錄 AI 異常偵測 (Excel 版)</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <style>
         body { font-family: sans-serif; padding: 20px; line-height: 1.6; background-color: #f4f7f6; }
         .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
@@ -22,13 +22,13 @@
 <body>
 
 <div class="container">
-    <h2>🚀 簽到紀錄 AI 異常偵測</h2>
+    <h2>🚀 簽到紀錄 AI 異常偵測 (Excel)</h2>
     
     <div id="modelStatus" class="status loading">正在載入 AI 模型...</div>
 
     <div style="margin-bottom: 20px;">
-        <label>1. 選擇簽到 CSV 檔案：</label>
-        <input type="file" id="csvFile" accept=".csv" disabled>
+        <label>1. 選擇簽到 Excel (.xlsx) 檔案：</label>
+        <input type="file" id="excelFile" accept=".xlsx, .xls" disabled>
     </div>
 
     <div>
@@ -55,19 +55,19 @@
 <script>
     let model;
     const modelStatus = document.getElementById('modelStatus');
-    const csvFileInput = document.getElementById('csvFile');
+    const excelFileInput = document.getElementById('excelFile');
     const thresholdInput = document.getElementById('threshold');
 
-    // 1. 載入模型
+    // 1. 載入模型 (確保 model.json 與此 html 在同一目錄或正確路徑)
     async function init() {
         try {
-            // 注意：這裡假設 model.json 和 weights.bin 放在同目錄資料夾下
+            // 如果你的模型在子資料夾，請修改路徑如 './my-model/model.json'
             model = await tf.loadLayersModel('model.json');
-            modelStatus.innerText = '✅ 模型載入成功，請上傳 CSV 檔案進行偵測';
+            modelStatus.innerText = '✅ 模型載入成功，請上傳 Excel 檔案進行偵測';
             modelStatus.className = 'status ready';
-            csvFileInput.disabled = false;
+            excelFileInput.disabled = false;
         } catch (e) {
-            modelStatus.innerText = '❌ 模型載入失敗，請確認檔案是否存在';
+            modelStatus.innerText = '❌ 模型載入失敗，請確認 model.json 與 weights.bin 是否在正確位置';
             modelStatus.className = 'status anomaly';
             console.error(e);
         }
@@ -77,24 +77,40 @@
     function preprocess(checkIn, checkOut, duration) {
         const parseTime = (timeStr) => {
             if (!timeStr) return 0;
-            const [h, m] = timeStr.split(':').map(Number);
+            // 處理 Excel 讀取時可能出現的各種格式 (例如 09:00 或 Date 物件字串)
+            const timeParts = String(timeStr).match(/(\d{1,2}):(\d{1,2})/);
+            if (!timeParts) return 0;
+            const h = parseInt(timeParts[1]);
+            const m = parseInt(timeParts[2]);
             return (h + m / 60) / 24;
         };
-        return [parseTime(checkIn), parseTime(checkOut), parseFloat(duration) / 4];
+        
+        // 確保 duration 是數字
+        let dur = parseFloat(duration);
+        if (isNaN(dur)) dur = 0;
+
+        return [parseTime(checkIn), parseTime(checkOut), dur / 4];
     }
 
-    // 3. 處理檔案上傳
-    csvFileInput.addEventListener('change', function(e) {
+    // 3. 處理 Excel 檔案上傳
+    excelFileInput.addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
 
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: function(results) {
-                runDetection(results.data);
-            }
-        });
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            const data = new Uint8Array(ev.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            // 預設讀取第一個工作表 (First Sheet)
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // 轉換為 JSON 格式
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+            runDetection(jsonData);
+        };
+        reader.readAsArrayBuffer(file);
     });
 
     // 4. 執行偵測
@@ -105,12 +121,17 @@
         tbody.innerHTML = '';
         table.style.display = 'table';
 
+        if (data.length === 0) {
+            alert("Excel 檔案中找不到資料！");
+            return;
+        }
+
         data.forEach(row => {
-            // 讀取 CSV 欄位，請根據您的 CSV 欄位名稱修改
+            // 請根據您的 Excel 標題名稱對應，若名稱不同請修改下方字串
             const name = row['姓名'] || '未知';
             const checkIn = row['簽到時間'];
             const checkOut = row['簽退時間'];
-            const duration = row['簽到時數'] || 0;
+            const duration = row['簽到時數'] || row['時數'] || 0;
 
             if (!checkIn || !checkOut) return;
 
