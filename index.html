@@ -16,6 +16,14 @@
             --success-bg: #f6ffed;
             --success-text: #52c41a;
             --border-radius: 12px;
+            
+            /* 上傳圖片中的顏色風格 */
+            --input-bg: #f8f9fa;
+            --btn-bg: #404040;
+            --slider-track: #e0e0e0;
+            --slider-active-track: #6c6c6c;
+            --slider-thumb: #ffffff;
+            --slider-thumb-border: #808080;
         }
 
         body { 
@@ -53,20 +61,57 @@
         #excelFile { display: none; }
         
         .controls {
-            display: grid; grid-template-columns: 1fr 1fr auto; align-items: center;
-            gap: 25px; padding: 25px; background: #f8f9fa; border-radius: 8px; margin-bottom: 30px;
+            display: flex; flex-direction: column;
+            gap: 15px; padding: 25px; background: var(--input-bg); border-radius: var(--border-radius); margin-bottom: 30px;
         }
 
-        .slider-container { display: flex; flex-direction: column; gap: 8px; }
-        .slider-header { display: flex; justify-content: space-between; font-size: 0.9em; font-weight: 600; }
-        input[type="range"] { width: 100%; cursor: pointer; }
+        .control-row {
+            display: flex; justify-content: space-between; align-items: center; gap: 20px;
+        }
 
+        /* 靈敏度閥值 (MSE) 樣式比照上傳圖片 */
+        .sensitivity-control {
+            display: flex; align-items: center; gap: 15px; font-size: 1.1em;
+        }
+        .sensitivity-control .icon {
+            font-size: 1.2em; color: #6c6c6c;
+        }
+
+        /* 滑動桿 (Slider) 樣式比照上傳圖片 */
+        .slider-wrapper {
+            flex-grow: 1; display: flex; align-items: center; gap: 10px;
+        }
+        input[type="range"] {
+            -webkit-appearance: none; width: 100%; height: 6px; border-radius: 3px;
+            background: linear-gradient(to right, var(--slider-active-track) 0%, var(--slider-active-track) 100%, var(--slider-track) 100%, var(--slider-track) 100%);
+            outline: none; cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none; appearance: none;
+            width: 20px; height: 20px; border-radius: 50%;
+            background: var(--slider-thumb); border: 2px solid var(--slider-thumb-border);
+            cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px; height: 20px; border-radius: 50%;
+            background: var(--slider-thumb); border: 2px solid var(--slider-thumb-border);
+            cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        /* 顯示數值樣式比照上傳圖片 */
+        #thresholdValueDisplay {
+            font-size: 1.2em; font-weight: 600; font-family: 'Consolas', 'Monaco', monospace; min-width: 60px; text-align: right;
+        }
+
+        /* 按鈕樣式比照上傳圖片 */
         .btn-detect {
-            background-color: var(--primary-color); color: white; border: none;
-            padding: 15px 30px; border-radius: 6px; font-weight: 600; cursor: pointer;
+            background-color: var(--btn-bg); color: white; border: none;
+            padding: 12px 24px; border-radius: 6px; font-weight: 600; cursor: pointer;
             display: flex; align-items: center; gap: 8px; font-size: 1.1em;
+            transition: background-color 0.3s;
         }
-        .btn-detect:disabled { background-color: #d9d9d9; cursor: not-allowed; }
+        .btn-detect:hover { background-color: #555; }
+        .btn-detect:disabled { background-color: #8c8c8c; cursor: not-allowed; }
 
         #errorLog {
             color: var(--error-text); background: var(--error-bg);
@@ -102,21 +147,25 @@
     </div>
 
     <div class="controls">
-        <div class="slider-container">
-            <div class="slider-header">
-                <span>靈敏度閥值 (MSE)</span>
-                <span id="thresholdValue" style="color: var(--primary-color);">0.100</span>
+        <div class="control-row">
+            <div class="sensitivity-control">
+                <i class="fas fa-sliders-h icon"></i>
+                <div style="font-weight: 600;">靈敏度閥值 (MSE)</div>
             </div>
-            <input type="range" id="threshold" min="0.001" max="0.5" step="0.001" value="0.1">
+            
+            <div class="slider-wrapper">
+                <input type="range" id="threshold" min="0.001" max="0.5" step="0.001" value="0.1">
+                <span id="thresholdValueDisplay">0.1000</span>
+            </div>
+
+            <button id="detectBtn" class="btn-detect" disabled>
+                <i class="fas fa-play"></i> 執行偵測
+            </button>
         </div>
 
-        <div style="color: #8c8c8c; font-size: 0.85em;">
+        <div style="color: #8c8c8c; font-size: 0.85em; text-align: right;">
             調整滑桿設定 AI 判定標準。<br>數值越小，偵測條件越嚴格。
         </div>
-        
-        <button id="detectBtn" class="btn-detect" disabled>
-            <i class="fas fa-search"></i> 執行偵測
-        </button>
     </div>
 
     <table id="resultTable" style="display:none;">
@@ -145,7 +194,14 @@
     const fileNameDisplay = document.getElementById('fileNameDisplay');
     const dropZone = document.getElementById('dropZone');
     const thresholdSlider = document.getElementById('threshold');
-    const thresholdValueDisp = document.getElementById('thresholdValue');
+    const thresholdValueDisp = document.getElementById('thresholdValueDisplay');
+
+    // 初始化滑動桿背景色
+    function updateSliderBackground(slider) {
+        const percentage = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+        slider.style.background = `linear-gradient(to right, var(--slider-active-track) 0%, var(--slider-active-track) ${percentage}%, var(--slider-track) ${percentage}%, var(--slider-track) 100%)`;
+    }
+    updateSliderBackground(thresholdSlider);
 
     // --- 載入模型邏輯 ---
     async function loadAIModel() {
@@ -168,7 +224,8 @@
     }
 
     thresholdSlider.addEventListener('input', (e) => {
-        thresholdValueDisp.innerText = parseFloat(e.target.value).toFixed(3);
+        thresholdValueDisp.innerText = parseFloat(e.target.value).toFixed(4);
+        updateSliderBackground(e.target);
     });
 
     function checkReadyState() {
