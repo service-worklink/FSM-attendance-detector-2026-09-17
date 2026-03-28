@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>AI 簽到異常偵測系統 (進階版)</title>
+    <title>AI 簽到異常偵測系統</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -29,43 +29,34 @@
             border-radius: var(--border-radius); box-shadow: 0 4px 20px rgba(0,0,0,0.08); 
         }
 
-        /* 標題與模型載入區 */
-        .header-flex { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+        .header-flex { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; }
         
-        .status { 
-            display: inline-block; padding: 6px 16px; border-radius: 20px; 
-            font-size: 0.9em; font-weight: 500; margin-top: 10px;
+        /* 狀態按鈕化樣式 */
+        .model-load-btn { 
+            display: inline-block; padding: 10px 20px; border-radius: 20px; 
+            font-size: 0.95em; font-weight: 600; cursor: pointer;
+            border: 1px solid #d9d9d9; transition: all 0.3s;
+            background: #ffffff; color: #555;
         }
-        .waiting { background: #e8e8e8; color: #8c8c8c; border: 1px solid #d9d9d9; }
-        .loading { background: #fffbe6; color: #faad14; border: 1px solid #ffe58f; }
-        .ready { background: var(--success-bg); color: var(--success-text); border: 1px solid #b7eb8f; }
-        .error { background: var(--error-bg); color: var(--error-text); border: 1px solid #ffa39e; }
+        .model-load-btn:hover { background: #f0f0f0; border-color: #4a90e2; color: #4a90e2; }
+        .model-load-btn.loading { background: #fffbe6; color: #faad14; border-color: #ffe58f; cursor: wait; }
+        .model-load-btn.ready { background: var(--success-bg); color: var(--success-text); border-color: #b7eb8f; cursor: default; }
+        .model-load-btn.error { background: var(--error-bg); color: var(--error-text); border-color: #ffa39e; }
 
-        .btn-load-model {
-            background-color: #555; color: white; border: none; padding: 10px 20px;
-            border-radius: 6px; cursor: pointer; font-weight: 600; transition: 0.3s;
-        }
-        .btn-load-model:hover { background-color: #333; }
-        .btn-load-model:disabled { opacity: 0.5; cursor: not-allowed; }
-
-        /* 檔案上傳區 */
         .upload-section {
             border: 2px dashed #d9d9d9; border-radius: var(--border-radius);
             padding: 30px; text-align: center; background: #fafafa;
             transition: all 0.3s; cursor: pointer; margin-bottom: 20px;
         }
         .upload-section.has-file { border-color: var(--primary-color); background: #f0f7ff; }
-        .upload-section.invalid-file { border-color: var(--error-text); background: var(--error-bg); }
         .upload-section i { font-size: 32px; color: var(--primary-color); margin-bottom: 10px; }
         #excelFile { display: none; }
         
-        /* 控制列 */
         .controls {
             display: grid; grid-template-columns: 1fr 1fr auto; align-items: center;
             gap: 25px; padding: 25px; background: #f8f9fa; border-radius: 8px; margin-bottom: 30px;
         }
 
-        /* 滑動桿樣式 */
         .slider-container { display: flex; flex-direction: column; gap: 8px; }
         .slider-header { display: flex; justify-content: space-between; font-size: 0.9em; font-weight: 600; }
         input[type="range"] { width: 100%; cursor: pointer; }
@@ -95,43 +86,36 @@
 
 <div class="container">
     <div class="header-flex">
-        <div>
-            <h2><i class="fas fa-microchip"></i> 簽到紀錄 AI 異常偵測</h2>
-            <div id="modelStatus" class="status waiting">系統狀態：等待載入模型</div>
+        <h2><i class="fas fa-id-badge"></i> 簽到紀錄 AI 異常偵測</h2>
+        <div id="modelStatusBtn" class="model-load-btn" onclick="loadAIModel()">
+            <i class="fas fa-download"></i> 點擊載入標準模型
         </div>
-        <button id="loadModelBtn" class="btn-load-model">
-            <i class="fas fa-download"></i> 1. 載入 AI 模型
-        </button>
     </div>
 
     <div id="errorLog"></div>
 
     <div class="upload-section" id="dropZone" onclick="document.getElementById('excelFile').click()">
         <i class="fas fa-file-excel"></i>
-        <div id="fileNameDisplay" style="font-size: 1.1em; font-weight: 500;">2. 點擊上傳 Excel 檔案</div>
-        <div style="color: #8c8c8c; font-size: 0.85em; margin-top: 5px;">必須包含：員工編號、簽到時間、簽退時間</div>
+        <div id="fileNameDisplay" style="font-size: 1.1em; font-weight: 500;">上傳簽到 Excel 檔案</div>
+        <div style="color: #8c8c8c; font-size: 0.85em; margin-top: 5px;">需包含：員工編號、簽到時間、簽退時間</div>
         <input type="file" id="excelFile" accept=".xlsx, .xls">
     </div>
 
     <div class="controls">
         <div class="slider-container">
             <div class="slider-header">
-                <span><i class="fas fa-sliders-h"></i> 靈敏度閥值 (MSE)</span>
+                <span>靈敏度閥值 (MSE)</span>
                 <span id="thresholdValue" style="color: var(--primary-color);">0.100</span>
             </div>
             <input type="range" id="threshold" min="0.001" max="0.5" step="0.001" value="0.1">
-            <div style="display: flex; justify-content: space-between; font-size: 0.75em; color: #999;">
-                <span>更靈敏 (嚴格)</span>
-                <span>更寬鬆 (放行)</span>
-            </div>
         </div>
 
-        <div style="color: #8c8c8c; font-size: 0.85em; line-height: 1.4;">
-            ※ 調整閥值決定 AI 判定異常的標準。<br>越小越容易抓出細微偏差。
+        <div style="color: #8c8c8c; font-size: 0.85em;">
+            調整滑桿設定 AI 判定標準。<br>數值越小，偵測條件越嚴格。
         </div>
         
         <button id="detectBtn" class="btn-detect" disabled>
-            <i class="fas fa-search"></i> 3. 執行偵測
+            <i class="fas fa-search"></i> 執行偵測
         </button>
     </div>
 
@@ -142,8 +126,8 @@
                 <th>員工編號</th>
                 <th>簽到 / 簽退</th>
                 <th>時數</th>
-                <th>誤差值 (MSE)</th>
-                <th>判定結果</th>
+                <th>誤差值</th>
+                <th>結果</th>
             </tr>
         </thead>
         <tbody id="resultBody"></tbody>
@@ -155,55 +139,47 @@
     let pendingData = [];
     const REQUIRED_COLUMNS = ['員工編號', '簽到時間', '簽退時間']; 
 
-    const modelStatus = document.getElementById('modelStatus');
-    const loadModelBtn = document.getElementById('loadModelBtn');
+    const modelStatusBtn = document.getElementById('modelStatusBtn');
     const excelFileInput = document.getElementById('excelFile');
     const detectBtn = document.getElementById('detectBtn');
     const fileNameDisplay = document.getElementById('fileNameDisplay');
     const dropZone = document.getElementById('dropZone');
-    const errorLog = document.getElementById('errorLog');
     const thresholdSlider = document.getElementById('threshold');
     const thresholdValueDisp = document.getElementById('thresholdValue');
 
-    // --- 1. 載入模型邏輯 ---
-    loadModelBtn.addEventListener('click', async () => {
-        loadModelBtn.disabled = true;
-        modelStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 模型載入中...';
-        modelStatus.className = 'status loading';
+    // --- 載入模型邏輯 ---
+    async function loadAIModel() {
+        if (model) return; // 已載入則不再重複執行
+
+        modelStatusBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 模型載入中...';
+        modelStatusBtn.className = 'model-load-btn loading';
 
         try {
-            // 載入與此 HTML 同目錄下的模型
             model = await tf.loadLayersModel('model.json');
-            modelStatus.innerHTML = '<i class="fas fa-check-circle"></i> AI 模型載入成功';
-            modelStatus.className = 'status ready';
-            loadModelBtn.innerHTML = '<i class="fas fa-check"></i> 模型已就緒';
+            // 修改處：載入成功後變更顯示
+            modelStatusBtn.innerHTML = '<i class="fas fa-check-circle"></i> 模型已就緒';
+            modelStatusBtn.className = 'model-load-btn ready';
+            modelStatusBtn.onclick = null; // 移除點擊事件
             checkReadyState();
         } catch (e) {
-            modelStatus.innerHTML = '<i class="fas fa-times-circle"></i> 模型檔案讀取失敗 (需透過 Server 開啟)';
-            modelStatus.className = 'status error';
-            loadModelBtn.disabled = false;
+            modelStatusBtn.innerHTML = '<i class="fas fa-times-circle"></i> 載入失敗，請重試';
+            modelStatusBtn.className = 'model-load-btn error';
         }
-    });
+    }
 
-    // --- 2. 滑動桿同步顯示 ---
     thresholdSlider.addEventListener('input', (e) => {
         thresholdValueDisp.innerText = parseFloat(e.target.value).toFixed(3);
     });
 
-    // --- 3. 檢查是否可以開始偵測 ---
     function checkReadyState() {
         if (model && pendingData.length > 0) {
             detectBtn.disabled = false;
         }
     }
 
-    // --- 4. 檔案讀取邏輯 ---
     excelFileInput.addEventListener('change', function(e) {
         const file = e.target.files[0];
         if (!file) return;
-
-        errorLog.style.display = 'none';
-        dropZone.classList.remove('invalid-file', 'has-file');
 
         const reader = new FileReader();
         reader.onload = function(ev) {
@@ -216,54 +192,31 @@
                 combinedData = combinedData.concat(sheet.map(row => ({ ...row, _sheet: name })));
             });
 
-            // 格式檢核
-            if (combinedData.length === 0) {
-                showError("檔案內容為空");
-                return;
+            if (combinedData.length > 0) {
+                pendingData = combinedData;
+                fileNameDisplay.innerText = `已讀取：${file.name} (${pendingData.length} 筆)`;
+                dropZone.classList.add('has-file');
+                checkReadyState();
             }
-            const keys = Object.keys(combinedData[0]);
-            const missing = REQUIRED_COLUMNS.filter(col => !keys.includes(col));
-            if (missing.length > 0) {
-                showError(`缺少欄位：${missing.join(', ')}`);
-                return;
-            }
-
-            pendingData = combinedData;
-            fileNameDisplay.innerText = `已讀取：${file.name} (${pendingData.length} 筆)`;
-            dropZone.classList.add('has-file');
-            checkReadyState();
         };
         reader.readAsArrayBuffer(file);
     });
 
-    function showError(msg) {
-        errorLog.innerText = msg;
-        errorLog.style.display = 'block';
-        dropZone.classList.add('invalid-file');
-        fileNameDisplay.innerText = "格式錯誤";
-    }
-
-    // --- 5. 偵測與特徵工程 ---
-    detectBtn.addEventListener('click', () => runDetection(pendingData));
-
-    function preprocess(checkIn, checkOut, duration) {
-        const parseTime = (timeStr) => {
-            if (!timeStr) return 0;
-            const timeParts = String(timeStr).match(/(\d{1,2}):(\d{1,2})/);
-            if (!timeParts) return 0;
-            return (parseInt(timeParts[1]) + parseInt(timeParts[2]) / 60) / 24;
-        };
-        return [parseTime(checkIn), parseTime(checkOut), (parseFloat(duration) || 0) / 4];
-    }
-
-    function runDetection(data) {
+    detectBtn.addEventListener('click', () => {
         const tbody = document.getElementById('resultBody');
         const threshold = parseFloat(thresholdSlider.value);
         tbody.innerHTML = '';
         document.getElementById('resultTable').style.display = 'table';
         
-        data.forEach(row => {
-            const features = preprocess(row['簽到時間'], row['簽退時間'], row['簽到時數'] || row['時數']);
+        pendingData.forEach(row => {
+            // 簡易前處理
+            const parseTime = (t) => {
+                if (!t) return 0;
+                const m = String(t).match(/(\d{1,2}):(\d{1,2})/);
+                return m ? (parseInt(m[1]) + parseInt(m[2])/60)/24 : 0;
+            };
+            const features = [parseTime(row['簽到時間']), parseTime(row['簽退時間']), (parseFloat(row['簽到時數'] || row['時數']) || 0)/4];
+            
             const inputTensor = tf.tensor2d([features]);
             const mse = tf.losses.meanSquaredError(inputTensor, model.predict(inputTensor)).dataSync()[0];
             const isAnomaly = mse > threshold;
@@ -275,12 +228,12 @@
                 <td>${row['簽到時間']} - ${row['簽退時間']}</td>
                 <td>${row['簽到時數'] || row['時數'] || '-'}</td>
                 <td style="font-family:monospace;">${mse.toFixed(5)}</td>
-                <td><span class="tag ${isAnomaly ? 'tag-anomaly' : 'tag-normal'}">${isAnomaly ? '🚨 異常紀錄' : '正常'}</span></td>
+                <td><span class="tag ${isAnomaly ? 'tag-anomaly' : 'tag-normal'}">${isAnomaly ? '🚨 異常' : '正常'}</span></td>
             `;
             tbody.appendChild(tr);
         });
         document.getElementById('resultTable').scrollIntoView({ behavior: 'smooth' });
-    }
+    });
 </script>
 </body>
 </html>
